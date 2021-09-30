@@ -13,6 +13,8 @@ import {
 import { useMergedState } from 'vooks'
 import { NSelect } from '../../select'
 import { InputInst, NInput } from '../../input'
+import { NPopover, PopoverProps } from '../../popover'
+import { NScrollbar } from '../../scrollbar'
 import { NBaseIcon } from '../../_internal'
 import {
   FastForwardIcon,
@@ -24,9 +26,10 @@ import {
 import { useConfig, useLocale, useTheme } from '../../_mixins'
 import type { ThemeProps } from '../../_mixins'
 import { paginationLight, PaginationTheme } from '../styles'
-import { pageItems } from './utils'
+import { pageItems, getPagesFromRanges } from './utils'
 import type { PageItem } from './utils'
 import style from './styles/index.cssr'
+import pageSlotPopoverStyle from './styles/popover.cssr'
 import { call, ExtractPublicPropTypes, MaybeArray, warn } from '../../_utils'
 import type { Size as InputSize } from '../../input/src/interface'
 import type { Size as SelectSize } from '../../select/src/interface'
@@ -59,6 +62,10 @@ const paginationProps = {
   pageSlot: {
     type: Number,
     default: 9
+  },
+  pageSlotPopover: {
+    type: [Boolean, Object] as PropType<boolean | PopoverProps>,
+    default: true
   },
   prev: Function as PropType<RenderPrev>,
   next: Function as PropType<RenderNext>,
@@ -117,6 +124,19 @@ export default defineComponent({
     const uncontrolledPageSizeRef = ref(
       props.defaultPageSize || props.pageSizes[0]
     )
+    const pageSlotPopoverRef = computed(() => {
+      let pageSlotPopover: PopoverProps = {
+        disabled: true,
+        placement: 'bottom',
+      };
+
+      if (typeof props.pageSlotPopover === 'object') {
+        pageSlotPopover = { ...pageSlotPopover, ...props.pageSlotPopover, }
+      } else {
+        pageSlotPopover.disabled = !props.pageSlotPopover;
+      }
+      return pageSlotPopover;
+    })
     const mergedPageRef = useMergedState(
       toRef(props, 'page'),
       uncontrolledPageRef
@@ -215,8 +235,13 @@ export default defineComponent({
       const page = Math.max(mergedPageRef.value - 1, 1)
       doUpdatePage(page)
     }
+    function showSlotsPopup(pageType: Omit<PageItem['type'], 'page'>) {
+
+    }
     function fastForward (): void {
       if (props.disabled) return
+      if (props.pageSlotPopover) return
+      
       const page = Math.min(
         mergedPageRef.value + (props.pageSlot - 4),
         mergedPageCountRef.value
@@ -225,6 +250,8 @@ export default defineComponent({
     }
     function fastBackward (): void {
       if (props.disabled) return
+      if (props.pageSlotPopover) return
+      
       const page = Math.max(mergedPageRef.value - (props.pageSlot - 4), 1)
       doUpdatePage(page)
     }
@@ -252,15 +279,19 @@ export default defineComponent({
           doUpdatePage(pageItem.label)
           break
         case 'fastBackward':
-          fastBackward()
+          if (!props.pageSlotPopover) fastBackward()
+          else showSlotsPopup(pageItem.type);
           break
         case 'fastForward':
-          fastForward()
+          if (!props.pageSlotPopover) fastForward()
+          else showSlotsPopup(pageItem.type);
           break
       }
     }
     function handlePageItemMouseEnter (pageItem: PageItem): void {
       if (props.disabled) return
+      if (props.pageSlotPopover) return
+      
       switch (pageItem.type) {
         case 'fastBackward':
           showFastBackwardRef.value = true
@@ -295,6 +326,7 @@ export default defineComponent({
       void mergedPageSizeRef.value
       disableTransitionOneTick()
     })
+
     return {
       mergedClsPrefix: mergedClsPrefixRef,
       locale: localeRef,
@@ -306,6 +338,7 @@ export default defineComponent({
       pageItems: computed(() =>
         pageItems(mergedPageRef.value, mergedPageCountRef.value, props.pageSlot)
       ),
+      pageSlotPopover: pageSlotPopoverRef,
       jumperValue: jumperValueRef,
       pageSizeOptions: pageSizeOptionsRef,
       mergedPageSize: mergedPageSizeRef,
@@ -419,6 +452,7 @@ export default defineComponent({
       mergedPage,
       mergedPageCount,
       pageItems,
+      pageSlotPopover,
       showFastBackward,
       showFastForward,
       showSizePicker,
@@ -443,6 +477,9 @@ export default defineComponent({
       handleForwardClick,
       handleQuickJumperKeyUp
     } = this
+
+    console.log('[feat] pageSlotPopover', pageSlotPopover);
+
     const renderPrev = prev || $slots.prev
     const renderNext = next || $slots.next
     return (
@@ -526,9 +563,55 @@ export default defineComponent({
                     {{ default: () => <FastForwardIcon /> }}
                   </NBaseIcon>
                 ) : (
-                  <NBaseIcon clsPrefix={mergedClsPrefix}>
-                    {{ default: () => <MoreIcon /> }}
-                  </NBaseIcon>
+                  <NPopover
+                    {...pageSlotPopover}
+                    show
+                    trigger={pageSlotPopover.trigger || "click"}
+                    disabled={pageSlotPopover.disabled}
+                    style={{
+                      paddingLeft: 0,
+                      paddingRight: 0,
+                    }}
+                  >
+                    {{
+                      trigger: () => (
+                        <NBaseIcon clsPrefix={mergedClsPrefix}>
+                          {{ default: () => <MoreIcon /> }}
+                        </NBaseIcon>
+                      ),
+                      default: () => {
+                        if (!pageItem.pageRanges?.length) return null;
+                        const pages = getPagesFromRanges(pageItem.pageRanges[0], pageItem.pageRanges[1]);
+                        if (!pages.length) return null;
+
+                        return (
+                          <NScrollbar
+                            // themeOverrides={mergedTheme.peerOverrides.Scrollbar}
+                            // theme={mergedTheme.peers.Scrollbar}
+                            // {...scrollbarProps}
+                            class={`${mergedClsPrefix}-pagination-slots-popup-scroller-body`}
+                            contentClass={`${mergedClsPrefix}-pagination-slots-popup-scroller-body-content-wrapper`}
+                            scrollable
+                            style={{
+                              maxHeight: '100px',
+                              paddingLeft: '12px',
+                              paddingRight: '12px',
+                            }}
+                          >
+                            <ul
+                              class={`${mergedClsPrefix}-pagination-slots-popup`}
+                            >
+                              {pages?.map(
+                                (page, idx) => (
+                                  <li key={`popover-pageno-${page}`}>{page}</li>
+                                )
+                              )}
+                            </ul>
+                          </NScrollbar>
+                        );
+                      }
+                    }}
+                  </NPopover>
                 )
               ) : null}
             </div>

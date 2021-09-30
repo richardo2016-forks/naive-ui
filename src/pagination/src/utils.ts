@@ -1,4 +1,4 @@
-function pagesToShow (
+export function pagesToShow (
   currentPage: number,
   pageCount: number,
   pageSlot: number = 9
@@ -51,6 +51,7 @@ export type PageItem =
     type: 'fastBackward' | 'fastForward'
     label: string
     active: false
+    pageRanges?: number[]
   }
   | {
     type: 'page'
@@ -58,20 +59,42 @@ export type PageItem =
     active: boolean
   }
 
-function mapPagesToPageItems (pages: number[], currentPage: number): PageItem[] {
-  return pages.map((page) => {
+function getFastRanges (fastIdx: number, pages: number[]) {
+  const ranges = [
+    pages[fastIdx - 1] + 1,
+    pages[fastIdx + 1] - 1
+  ];
+  
+  return ranges;
+}
+
+export function getPagesFromRanges (start: number, end: number) {
+  const ranges: number[] = [];
+  let cur = start;
+  
+  while (cur++ < end) {
+    ranges.push(cur)
+  }
+  
+  return ranges;
+}
+
+export function mapPagesToPageItems (pages: number[], currentPage: number): PageItem[] {
+  return pages.map((page, idx) => {
     switch (page) {
       case -2:
         return {
           type: 'fastBackward',
           label: 'fastBackward',
-          active: false
+          active: false,
+          pageRanges: getFastRanges(idx, pages),
         }
       case -1:
         return {
           type: 'fastForward',
           label: 'fastForward',
-          active: false
+          active: false,
+          pageRanges: getFastRanges(idx, pages),
         }
       default:
         if (page === currentPage) {
@@ -91,13 +114,14 @@ function mapPagesToPageItems (pages: number[], currentPage: number): PageItem[] 
   })
 }
 
-function pageItems (
+export function pageItems (
   currentPage: number,
   pageCount: number,
   pageSlot?: number
 ): PageItem[] {
   const pages = pagesToShow(currentPage, pageCount, pageSlot)
-  return mapPagesToPageItems(pages, currentPage)
-}
+  const results = mapPagesToPageItems(pages, currentPage)
 
-export { pagesToShow, mapPagesToPageItems, pageItems }
+  // console.info('[feat] ::pageItems results', results);
+  return results;
+}
